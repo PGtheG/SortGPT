@@ -1,6 +1,7 @@
 from robomaster import robot
 
 from modules.camera import camera_test
+from modules.chassis import chassis_test
 from modules.gripper import gripper_test
 
 def init_robot():
@@ -16,3 +17,4 @@ if __name__ == '__main__':
     # TEST FUNCTIONS
     # camera_test(robot)
     # gripper_test(robot)
+    chassis_test(robot)
