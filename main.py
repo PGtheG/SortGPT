@@ -1,14 +1,18 @@
-import time
 from robomaster import robot
-from robomaster import camera
 
-if __name__ == '__main__':
+from modules.camera import camera_test
+from modules.gripper import gripper_test
+
+def init_robot():
     ep_robot = robot.Robot()
     ep_robot.initialize(conn_type="ap")
-    ep_camera = ep_robot.camera
 
-    ep_camera.start_video_stream(display=True, resolution=camera.STREAM_720P)
-    time.sleep(20)
+    return ep_robot
 
-    ep_camera.stop_video_stream()
-    ep_robot.close()
+if __name__ == '__main__':
+    # INIT ROBOT
+    robot = init_robot()
+
+    # TEST FUNCTIONS
+    # camera_test(robot)
+    # gripper_test(robot)
