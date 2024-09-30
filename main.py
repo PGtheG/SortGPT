@@ -1,7 +1,9 @@
 from robomaster import robot
 
-from modules.camera import camera_test
+from modules.camera import camera_test, detect_and_draw_ball
 from modules.gripper import gripper_test
+from modules.sound import test_sound
+
 
 def init_robot():
     ep_robot = robot.Robot()
@@ -16,3 +18,5 @@ if __name__ == '__main__':
     # TEST FUNCTIONS
     # camera_test(robot)
     # gripper_test(robot)
+    detect_and_draw_ball(robot)
+    # test_sound(robot)
