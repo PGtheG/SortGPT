@@ -1,6 +1,6 @@
 from robomaster import robot
 
-from modules.camera import camera_test, detect_and_draw_ball
+from modules.camera import camera_test, detect_and_draw_balls
 from modules.gripper import gripper_test
 from modules.sound import test_sound
 
@@ -18,5 +18,5 @@ if __name__ == '__main__':
     # TEST FUNCTIONS
     # camera_test(robot)
     # gripper_test(robot)
-    detect_and_draw_ball(robot)
+    detect_and_draw_balls(robot)
     # test_sound(robot)
