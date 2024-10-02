@@ -1,4 +1,6 @@
 def get_box_by_color(color):
+    color = str.lower(color)
+
     if color == 'red':
         return 1
     if color == 'yellow':

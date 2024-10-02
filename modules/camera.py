@@ -1,9 +1,12 @@
+import time
+
 import cv2
 import numpy as np
+from robomaster import robot
 
 from modules import chassis as mod_chassis
+from modules import arm as mod_arm
 from helper import sequence as help_sequence
-
 
 BALL_DETECTION_RATE = 0.2 # Range: 0 - 1
 BALL_MIN_AREA = 300
@@ -20,6 +23,8 @@ ROI_END_Y = 550
 ROI_START_X = 550
 ROI_END_X = 750
 THRESHOLD = 1500
+DETECTED_MARKER_INFO = None
+BOX_NR = 0
 
 def draw_circles(frame, contour_list, red=255, green=255, blue=255):
     for contour in contour_list:
@@ -95,7 +100,8 @@ def search_ball(robot, frame):
 
     if ball is None:
         # Advanced logic which searches for ball needed
-        print('no ball found')
+        print('no ball found, start searching...')
+        mod_chassis.turn(robot, 20, 30)
 
         return processed_frame, False, None
 
@@ -124,14 +130,90 @@ def handle_color_in_gripper(frame):
 
     return False, frame, None
 
-def search_box(robot, frame, box_nr):
+
+def handle_search_box(robot, box_nr):
+    global DETECTED_MARKER_INFO
+    global BOX_NR
+
+    BOX_NR = box_nr
+    search_box_with_vision(robot)
+
+    if DETECTED_MARKER_INFO:
+        marker_info = DETECTED_MARKER_INFO
+        DETECTED_MARKER_INFO = None
+
+        return marker_info
+
+    else:
+        mod_chassis.turn(robot, 45, 100)
+
+    return None
+
+
+def search_box_with_vision(robot):
     robot_vision = robot.vision
     robot_vision.sub_detect_info(name='marker', callback=marker_detected)
 
-    return frame
 
 def marker_detected(marker_info):
+    global DETECTED_MARKER_INFO
     for info in marker_info:
         x, y, w, h, number = info
-        print(f"X: {x}, Y:{y}, Width:{w}, Height:{h}, Number:{number}")
 
+        if int(number) == BOX_NR:
+            DETECTED_MARKER_INFO = (x, y, w, h, number)
+            break  # Exit once we find the matching marker
+
+
+def draw_marker(frame, marker_info):
+    frame_height, frame_width = frame.shape[:2]
+    x, y, w, h, number = marker_info
+
+    rect_x = int(x * frame_width)
+    rect_y = int(y * frame_height)
+    rect_width = int(w * frame_width)
+    rect_height = int(h * frame_height)
+
+    top_left_x = int(rect_x - (rect_width / 2))
+    top_left_y = int(rect_y - (rect_height / 2))
+    bottom_right_x = int(rect_x + (rect_width / 2))
+    bottom_right_y = int(rect_y + (rect_height / 2))
+
+    cv2.rectangle(frame, (top_left_x, top_left_y), (bottom_right_x, bottom_right_y), (0, 0, 0), 2)
+
+    return frame, rect_x, rect_y
+
+def adjust_position(robot, rect_x, rect_y):
+    lower_middle = 600
+    upper_middle = 720
+    lower_distance = 350
+    upper_distance = 400
+    has_position = True
+
+    if rect_x < lower_middle:
+        mod_chassis.move_left(robot, 0.1, 0.5)
+        has_position = False
+
+    elif rect_x > upper_middle:
+        mod_chassis.move_right(robot, 0.1, 0.5)
+        has_position = False
+
+    elif rect_y < lower_distance:
+        mod_chassis.move_forward(robot, 0.1, 0.5)
+        has_position = False
+
+    elif rect_y > upper_distance:
+        mod_chassis.move_backwards(robot, 0.1, 0.5)
+        has_position = False
+
+    return has_position
+
+
+def handle_marker(robot, frame, marker_info):
+    frame_to_draw, rect_x, rect_y = draw_marker(frame, marker_info)
+    has_position = adjust_position(robot, rect_x, rect_y)
+
+    if has_position:
+        help_sequence.release_ball(robot)
+
+    return frame_to_draw

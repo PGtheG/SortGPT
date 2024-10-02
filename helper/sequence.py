@@ -4,15 +4,23 @@ import modules.gripper as mod_gripper
 import modules.chassis as mod_chassis
 import modules.arm as mod_arm
 
+def release_ball(robot):
+    mod_arm.high(robot)
+    mod_chassis.move_forward(robot, 0.25, 0.5)
+    mod_gripper.gripper_open(robot)
+    mod_chassis.move_backwards(robot, 0.25, 0.5)
+    mod_chassis.turn(robot, 180, 100)
+    mod_arm.move_around(robot)
+
 ###########################
 # GRAB BALL AND TURN AROUND
 ###########################
 def grab_turn(robot):
-    mod_arm.lowtograb(robot)
+    mod_arm.low_to_grab(robot)
     time.sleep(1)
     mod_gripper.gripper_close(robot)
     time.sleep(1)
-    mod_arm.moveabout(robot)
+    mod_arm.move_around(robot)
     time.sleep(1)
     mod_chassis.move_backwards(robot, 0.1, 0.1)
     mod_chassis.turn(robot, 180, 100)
@@ -22,23 +30,22 @@ def grab_turn(robot):
 # GRAB BALL
 ###########################
 def grab_ball(robot):
-    mod_arm.lowtograb(robot)
+    mod_arm.low_to_grab(robot)
     mod_chassis.move_forward(robot, 0.2, 0.5)
     mod_gripper.gripper_close(robot)
-    mod_arm.moveabout(robot)
+    mod_arm.move_around(robot)
     mod_chassis.move_backwards(robot, 0.2, 0.5)
-    mod_gripper.gripper_open(robot)
 
 
 # ###########################
 # # DROP BALL INTO BOX
 # ###########################
 def drop_turn(robot):
-    mod_arm.lowtograb(robot)
+    mod_arm.low_to_grab(robot)
     time.sleep(1)
     mod_gripper.gripper_close(robot)
     time.sleep(1)
-    mod_arm.moveabout(robot)
+    mod_arm.move_around(robot)
     time.sleep(1)
     mod_arm.high(robot)
     time.sleep(1)
@@ -50,7 +57,7 @@ def drop_turn(robot):
     time.sleep(1)
     mod_chassis.turn(robot, 180, 100)
     time.sleep(1)
-    mod_arm.moveabout(robot)
+    mod_arm.move_around(robot)
     time.sleep(1)
 
 ###########################

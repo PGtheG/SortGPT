@@ -8,14 +8,16 @@ from modules import camera as mod_camera
 from modules import arm as mod_arm
 from modules import gripper as mod_gripper
 
-HAS_BALL_IN_GRIPPER = True
+HAS_BALL_IN_GRIPPER = False
 COLOR_OF_BALL = None
+LATEST_FRAME = None
+FRAME_LOCK = threading.Lock()
 
 def init_robot():
     ep_robot = robot.Robot()
     ep_robot.initialize(conn_type="ap")  # Connect to the robot
 
-    mod_arm.moveabout(ep_robot)
+    mod_arm.move_around(ep_robot)
     mod_gripper.gripper_open(ep_robot)
 
     return ep_robot
@@ -26,14 +28,16 @@ def start_video_stream(robot_camera):
 
 
 def get_frame(robot_camera):
-    return robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    return robot_camera.read_cv2_image(timeout=1, strategy="pipeline")
 
 
 def handle_gpt(robot, frame):
-    frame_to_draw,  = handle_search(robot, frame)
+    frame_to_draw  = handle_search(robot, frame)
 
     if frame_to_draw is not None:
         cv2.imshow("RoboMaster Camera Feed", frame_to_draw)
+    else:
+        cv2.imshow("RoboMaster Camera Feed", frame)
 
 
 def handle_search(robot, frame):
@@ -45,15 +49,22 @@ def handle_search(robot, frame):
         print('Search ball mode')
         frame_to_draw, HAS_BALL_IN_GRIPPER, COLOR_OF_BALL = mod_camera.search_ball(robot, frame)
 
+        return frame_to_draw
+
     # Mode 2: Search box and release ball
     else:
         print('Search box mode')
         box_nr = get_box_by_color(COLOR_OF_BALL)
-        frame_to_draw = mod_camera.search_box(robot, frame, box_nr)
+        marker_info = mod_camera.handle_search_box(robot, box_nr)
+
+        if marker_info:
+            frame_to_draw = mod_camera.handle_marker(robot, frame, marker_info)
+
+            return frame_to_draw
+
         # Switch back to Mode 1 when Ball is released
         # HAS_BALL_IN_GRIPPER = False
-
-    return frame_to_draw
+        return frame
 
 
 # Main function to run the program
