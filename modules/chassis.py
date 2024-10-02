@@ -1,48 +1,36 @@
 import time
 
+from helper.position import calc_turn, calc_distance
 
-# EXPLANATIONS OF VALUES USED IN .move()
-# x=0.5: distance along the x-axis, 0.5m
-# z=90: 90 degrees rotation
-# xy_speed=0.5: 0.5m/second or 0.5degrees/second
-#       :param x: float: [-5,5]，x轴向运动距离，单位 m
-#       :param y: float: [-5,5]，y轴向运动距离，单位 m
-#       :param z: float: [-1800,1800]，z轴向旋转角度，单位 °
-#       :param xy_speed: float: [0.5,2]，xy轴向运动速度，单位 m/s
-#       :param z_speed: float: [10,540]，z轴向旋转速度，单位 °/s
+def handle_moving(robot, ball):
+    degree = calc_turn(ball)
+    if degree > 1 or degree < -1:
+        turn(robot, degree)
 
-def chassis_test(robot):
+    distance = calc_distance(ball)
+    if distance > 0:
+        move_forward(robot, distance, speed=0.5)
+
+def move_forward(robot, length, speed=1.0):
     chassis = robot.chassis
+    chassis.move(x=length, xy_speed=speed).wait_for_completed()
+    time.sleep(1)
 
-    # set speed
-    chassis.drive_speed(x=0, y=0, z=0)
-    chassis.drive_wheels(w1=0, w2=0, w3=0, w4=0)
+def move_backwards(robot, length, speed):
+    chassis = robot.chassis
+    length = length * -1
+    chassis.move(x=length, xy_speed=speed).wait_for_completed()
 
-    # forwards
-    chassis.move(x=0, y=0, z=360, z_speed=540).wait_for_completed()
-    chassis.stop()
+def move_right(robot, length, speed):
+    chassis = robot.chassis
+    chassis.move(y=length, xy_speed=speed).wait_for_completed()
 
-    # # backwards
-    # chassis.move(x=-0.5, y=0, z=0, xy_speed=0.5).wait_for_completed()
-    #
-    # # sideways to the right
-    # chassis.move(x=0, y=0.5, z=0, xy_speed=0.5).wait_for_completed()
-    #
-    # # sideways to the left
-    # chassis.move(x=0, y=-0.5, z=0, xy_speed=0.5).wait_for_completed()
-    #
-    # # rotate clockwise
-    # chassis.move(x=0, y=0, z=90, xy_speed=0.5).wait_for_completed()
-    #
-    # # rotate counterclockwise
-    # chassis.move(x=0, y=0, z=-90, xy_speed=0.5).wait_for_completed()
-    #
-    # # diagonally forward-right
-    # chassis.move(x=0.5, y=0.5, z=0, xy_speed=0.5).wait_for_completed()
-    #
-    # # diagonally forward-left
-    # chassis.move(x=0.5, y=-0.5, z=0, xy_speed=0.5).wait_for_completed()
-    #
+def move_left(robot, length, speed):
+    chassis = robot.chassis
+    length = length * -1
+    chassis.move(y=length, xy_speed=speed).wait_for_completed()
 
-
-    robot.close()
+def turn(robot, degree, speed=100):
+    chassis = robot.chassis
+    degree = degree * -1
+    chassis.move(z=degree, z_speed=speed).wait_for_completed()

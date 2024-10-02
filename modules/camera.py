@@ -8,7 +8,12 @@ BALL_DETECTION_RATE = 0.2 # Range: 0 - 1
 BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
 BALL_MAX_RADIUS = 60
-
+COLOR_BOUNDS = {
+    "red": (np.array([102, 0, 0]), np.array([255, 50, 50])),
+    "yellow": (np.array([102, 102, 0]), np.array([255, 255, 50])),
+    "green": (np.array([0, 102, 0]), np.array([50, 255, 50])),
+    "blue": (np.array([0, 50, 204]), np.array([153, 204, 255]))
+}
 
 def camera_test(robot):
     robot_camera = robot.camera
@@ -65,45 +70,24 @@ def choose_best_ball(all_contours):
 
     return best_ball
 
+def observate_camera(robot_camera):
+    frame = robot_camera.read_cv2_image(strategy="newest")
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    all_contours = []
 
-def detect_and_draw_balls(robot):
-    color_bounds = {
-        "red": (np.array([102, 0, 0]), np.array([255, 50, 50])),
-        "yellow": (np.array([102, 102, 0]), np.array([255, 255, 50])),
-        "green": (np.array([0, 102, 0]), np.array([50, 255, 50])),
-        "blue": (np.array([0, 50, 204]), np.array([153, 204, 255]))
-    }
+    for color, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
+        mask = cv2.inRange(hsv, lower_bound, upper_bound)
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # draw_ball(frame, contours, red=0, green=0, blue=0) # for debugging purposes (black = contours)
+        balls = filter_circular_contours(contours)
+        # draw_ball(frame, balls, red=255, green=255, blue=255) # for debugging purposes (white = circular objects)
+        all_contours.extend(balls)
 
-    robot_camera = robot.camera
-    robot_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
+    best_ball = choose_best_ball(all_contours)
 
-    while True:
-        frame = robot_camera.read_cv2_image(strategy="newest")
-        if frame is None:
-            continue
+    if best_ball is not None:
+        draw_ball(frame, [best_ball], red=0, blue=0)
 
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        all_contours = []
+    cv2.imshow("Ball Detection", frame)
 
-        for color, (lower_bound, upper_bound) in color_bounds.items():
-            mask = cv2.inRange(hsv, lower_bound, upper_bound)
-            contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            draw_ball(frame, contours, red=0, green=0, blue=0) # for debugging purposes (black = contours)
-            balls = filter_circular_contours(contours)
-            draw_ball(frame, balls, red=255, green=255, blue=255) # for debugging purposes (white = circular objects)
-            all_contours.extend(balls)
-
-        best_ball = choose_best_ball(all_contours)
-
-        if best_ball is not None:
-            draw_ball(frame, [best_ball], red=0, blue=0)
-
-        cv2.imshow("Ball Detection", frame)
-
-        # Press 'q' to exit
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-
-    camera.stop_video_stream()
-    robot.close()
-    cv2.destroyAllWindows()
+    return best_ball

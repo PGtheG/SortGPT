@@ -1,23 +1,46 @@
-from robomaster import robot
+import cv2
+from robomaster import robot, camera
 
-from modules.camera import camera_test, detect_and_draw_balls
-from modules.gripper import gripper_test
-from modules.sound import test_sound
-from modules.chassis import chassis_test
+import modules.camera as mod_camera
+import modules.gripper as mod_gripper
+import modules.sound as mod_sound
+import modules.chassis as mod_chassis
+
 
 def init_robot():
-    ep_robot = robot.Robot()
-    ep_robot.initialize(conn_type="ap")
+    init_robot = robot.Robot()
+    init_robot.initialize(conn_type="ap")
 
-    return ep_robot
+    return init_robot
+
+def init_cam(init_cam_robot):
+    robot_camera = init_cam_robot.camera
+    robot_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
+
+    return robot_camera
 
 if __name__ == '__main__':
     # INIT ROBOT
-    robot = init_robot()
+    ep_robot = init_robot()
+    ep_camera = init_cam(ep_robot)
 
     # TEST FUNCTIONS
-    # camera_test(robot)
-    # gripper_test(robot)
-    # detect_and_draw_balls(robot)
-    # test_sound(robot)
-    # chassis_test(robot)
+    # mod_camera.camera_test(robot)
+    # mod_gripper.gripper_test(robot)
+    # mod_sound.test_sound(robot)
+
+
+    # MAIN FUNCTION
+    # while True:
+    #     ball = observate_camera(ep_camera)
+    #
+    #     if ball is not None:
+    #         mod_chassis.handle_moving(ep_robot, ball)
+    #
+    #     if cv2.waitKey(1) & 0xFF == ord('q'):
+    #         break
+    #
+    # ep_camera.stop_video_stream()
+    # cv2.destroyAllWindows()
+    # print('done')
+
