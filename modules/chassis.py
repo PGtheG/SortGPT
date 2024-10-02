@@ -1,5 +1,5 @@
 from helper.position import calc_turn
-from modules.camera import handle_color_in_gripper
+from modules import camera as mod_camera
 
 
 def handle_moving(robot, ball, frame):
@@ -7,9 +7,9 @@ def handle_moving(robot, ball, frame):
     if degree > 1 or degree < -1:
         turn(robot, degree)
 
-    processed_frame= drive_to_ball(robot, frame)
+    processed_frame, has_ball_in_gripper_range, color_of_ball = drive_to_ball(robot, frame)
 
-    return processed_frame
+    return processed_frame, has_ball_in_gripper_range, color_of_ball
 
 def move_forward(robot, length, speed=1.0):
     chassis = robot.chassis
@@ -35,8 +35,8 @@ def turn(robot, degree, speed=100):
     chassis.move(z=degree, z_speed=speed).wait_for_completed()
 
 def drive_to_ball(robot, frame):
-    color_not_in_gripper, processed_frame = handle_color_in_gripper(frame)
-    if color_not_in_gripper:
+    has_ball_in_gripper_range, processed_frame, color_of_ball = mod_camera.handle_color_in_gripper(frame)
+    if has_ball_in_gripper_range is False:
         move_forward(robot, 0.1, 0.5)
 
-    return processed_frame
+    return processed_frame, has_ball_in_gripper_range, color_of_ball

@@ -1,17 +1,12 @@
 import time
-from time import sleep
 
-from robomaster import robot, camera
-
-import modules.camera as mod_camera
 import modules.gripper as mod_gripper
-import modules.sound as mod_sound
 import modules.chassis as mod_chassis
 import modules.arm as mod_arm
 
-    ###########################
-    # GRAB BALL AND TURN AROUND
-    ###########################
+###########################
+# GRAB BALL AND TURN AROUND
+###########################
 def grab_turn(robot):
     mod_arm.lowtograb(robot)
     time.sleep(1)
@@ -23,9 +18,21 @@ def grab_turn(robot):
     mod_chassis.turn(robot, 180, 100)
     mod_gripper.gripper_open(robot)
 
-    # ###########################
-    # # DROP BALL INTO BOX
-    # ###########################
+###########################
+# GRAB BALL
+###########################
+def grab_ball(robot):
+    mod_arm.lowtograb(robot)
+    mod_chassis.move_forward(robot, 0.2, 0.5)
+    mod_gripper.gripper_close(robot)
+    mod_arm.moveabout(robot)
+    mod_chassis.move_backwards(robot, 0.2, 0.5)
+    mod_gripper.gripper_open(robot)
+
+
+# ###########################
+# # DROP BALL INTO BOX
+# ###########################
 def drop_turn(robot):
     mod_arm.lowtograb(robot)
     time.sleep(1)
@@ -46,21 +53,15 @@ def drop_turn(robot):
     mod_arm.moveabout(robot)
     time.sleep(1)
 
-
-    ###########################
-    # IS THERE SPACE TO MOVE
-    ###########################
-
-
-    ###########################
-    # SEARCH WHILE ROTATING
-    ###########################
+###########################
+# SEARCH WHILE ROTATING
+###########################
 def search_ball(robot):
     mod_chassis.turn(robot, 360, 100)
 
-    ###########################
-    # SEARCH WHILE ROTATING AND MOVING
-    ###########################
+###########################
+# SEARCH WHILE ROTATING AND MOVING
+###########################
 def search_move(robot):
     mod_chassis.turn(robot, 90, 100)
     mod_chassis.move_left(robot, 0.5, 0.5)
