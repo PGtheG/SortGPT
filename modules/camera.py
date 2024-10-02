@@ -1,11 +1,9 @@
-import time
+import threading
 
 import cv2
 import numpy as np
-from robomaster import robot
 
 from modules import chassis as mod_chassis
-from modules import arm as mod_arm
 from helper import sequence as help_sequence
 
 BALL_DETECTION_RATE = 0.2 # Range: 0 - 1
@@ -24,6 +22,7 @@ ROI_START_X = 550
 ROI_END_X = 750
 THRESHOLD = 1500
 DETECTED_MARKER_INFO = None
+DETECTED_MARKER_LOCK = threading.Lock()
 BOX_NR = 0
 
 def draw_circles(frame, contour_list, red=255, green=255, blue=255):
@@ -95,25 +94,27 @@ def search_for_ball(frame):
 
     return best_ball, processed_frame
 
-def search_ball(robot, frame):
+def search_ball(robot, frame, robot_camera):
     ball, processed_frame = search_for_ball(frame)
 
     if ball is None:
         # Advanced logic which searches for ball needed
-        print('no ball found, start searching...')
+        print('No ball found, start searching')
         mod_chassis.turn(robot, 20, 30)
 
         return processed_frame, False, None
 
     else:
-        frame_with_ball, has_ball_in_gripper_range, color_of_ball = mod_chassis.handle_moving(robot, ball, processed_frame)
+        print('Ball found, start catching')
+        frame_with_ball, has_ball_in_gripper_range, color_of_ball = mod_chassis.handle_moving(robot, ball, robot_camera)
         if has_ball_in_gripper_range:
             help_sequence.grab_ball(robot)
 
         return frame_with_ball, has_ball_in_gripper_range, color_of_ball
 
 
-def handle_color_in_gripper(frame):
+def handle_color_in_gripper(robot_camera):
+    frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
     gripper_roi = frame[ROI_START_Y:ROI_END_Y, ROI_START_X:ROI_END_X]
 
     for color_name, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
@@ -138,14 +139,15 @@ def handle_search_box(robot, box_nr):
     BOX_NR = box_nr
     search_box_with_vision(robot)
 
-    if DETECTED_MARKER_INFO:
-        marker_info = DETECTED_MARKER_INFO
-        DETECTED_MARKER_INFO = None
-
-        return marker_info
-
-    else:
-        mod_chassis.turn(robot, 45, 100)
+    with DETECTED_MARKER_LOCK:
+        if DETECTED_MARKER_INFO:
+            print('Marker detected')
+            marker_info = DETECTED_MARKER_INFO
+            DETECTED_MARKER_INFO = None
+            return marker_info
+        else:
+            print('No Marker detected, will turn slow')
+            mod_chassis.turn(robot, 20, 25)
 
     return None
 
@@ -157,12 +159,12 @@ def search_box_with_vision(robot):
 
 def marker_detected(marker_info):
     global DETECTED_MARKER_INFO
-    for info in marker_info:
-        x, y, w, h, number = info
-
-        if int(number) == BOX_NR:
-            DETECTED_MARKER_INFO = (x, y, w, h, number)
-            break  # Exit once we find the matching marker
+    with DETECTED_MARKER_LOCK:
+        for info in marker_info:
+            x, y, w, h, number = info
+            if int(number) == BOX_NR:
+                DETECTED_MARKER_INFO = (x, y, w, h, number)
+                break  # Exit once we find the matching marker
 
 
 def draw_marker(frame, marker_info):
@@ -184,27 +186,33 @@ def draw_marker(frame, marker_info):
     return frame, rect_x, rect_y
 
 def adjust_position(robot, rect_x, rect_y):
-    lower_middle = 600
-    upper_middle = 720
+    lower_middle = 550
+    upper_middle = 770
     lower_distance = 350
-    upper_distance = 400
+    upper_distance = 380
     has_position = True
 
-    if rect_x < lower_middle:
-        mod_chassis.move_left(robot, 0.1, 0.5)
-        has_position = False
-
-    elif rect_x > upper_middle:
-        mod_chassis.move_right(robot, 0.1, 0.5)
-        has_position = False
-
-    elif rect_y < lower_distance:
+    if rect_y < lower_distance:
         mod_chassis.move_forward(robot, 0.1, 0.5)
         has_position = False
+        print(f"move forward, distance: {rect_y - lower_distance}")
 
     elif rect_y > upper_distance:
         mod_chassis.move_backwards(robot, 0.1, 0.5)
         has_position = False
+        print("move backwards")
+
+    elif rect_x < lower_middle:
+        mod_chassis.move_left(robot, 0.1, 0.5)
+        has_position = False
+        print(f"move left, distance: {rect_x - lower_middle}")
+
+    elif rect_x > upper_middle:
+        mod_chassis.move_right(robot, 0.1, 0.5)
+        has_position = False
+        print(f"move right, distance: {rect_x - upper_middle}")
+
+    print(f"Has position: {has_position}")
 
     return has_position
 
@@ -212,8 +220,10 @@ def adjust_position(robot, rect_x, rect_y):
 def handle_marker(robot, frame, marker_info):
     frame_to_draw, rect_x, rect_y = draw_marker(frame, marker_info)
     has_position = adjust_position(robot, rect_x, rect_y)
+    still_working = True
 
     if has_position:
         help_sequence.release_ball(robot)
+        still_working = False
 
-    return frame_to_draw
+    return frame_to_draw, still_working

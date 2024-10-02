@@ -13,6 +13,7 @@ COLOR_OF_BALL = None
 LATEST_FRAME = None
 FRAME_LOCK = threading.Lock()
 
+
 def init_robot():
     ep_robot = robot.Robot()
     ep_robot.initialize(conn_type="ap")  # Connect to the robot
@@ -31,39 +32,37 @@ def get_frame(robot_camera):
     return robot_camera.read_cv2_image(timeout=1, strategy="pipeline")
 
 
-def handle_gpt(robot, frame):
-    frame_to_draw  = handle_search(robot, frame)
+def handle_gpt(robot, robot_camera):
+    frame_to_draw  = handle_search(robot, robot_camera)
 
     if frame_to_draw is not None:
         cv2.imshow("RoboMaster Camera Feed", frame_to_draw)
-    else:
-        cv2.imshow("RoboMaster Camera Feed", frame)
 
 
-def handle_search(robot, frame):
+def handle_search(robot, robot_camera):
     global HAS_BALL_IN_GRIPPER
     global COLOR_OF_BALL
+    frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
 
     # Mode 1: Search and grip ball
     if HAS_BALL_IN_GRIPPER is False:
-        print('Search ball mode')
-        frame_to_draw, HAS_BALL_IN_GRIPPER, COLOR_OF_BALL = mod_camera.search_ball(robot, frame)
+        print('Ball mode')
+        frame_to_draw, HAS_BALL_IN_GRIPPER, COLOR_OF_BALL = mod_camera.search_ball(robot, frame, robot_camera)
 
         return frame_to_draw
 
     # Mode 2: Search box and release ball
     else:
-        print('Search box mode')
+        print('Box mode')
         box_nr = get_box_by_color(COLOR_OF_BALL)
         marker_info = mod_camera.handle_search_box(robot, box_nr)
 
         if marker_info:
-            frame_to_draw = mod_camera.handle_marker(robot, frame, marker_info)
+            frame_to_draw, still_working = mod_camera.handle_marker(robot, frame, marker_info)
+            HAS_BALL_IN_GRIPPER = still_working
 
             return frame_to_draw
 
-        # Switch back to Mode 1 when Ball is released
-        # HAS_BALL_IN_GRIPPER = False
         return frame
 
 
@@ -78,9 +77,7 @@ if __name__ == '__main__':
 
     # MAIN LOOP
     while True:
-        frame = get_frame(robot_camera)
-        if frame is not None:
-            handle_gpt(ep_robot, frame)
+        handle_gpt(ep_robot, robot_camera)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
