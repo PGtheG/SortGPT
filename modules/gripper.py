@@ -1,14 +1,7 @@
-import time
-
-def gripper_test(robot):
+def gripper_open(robot):
     gripper = robot.gripper
-
     gripper.open(power=50)
-    time.sleep(1)
-    gripper.pause()
 
+def gripper_close(robot):
+    gripper = robot.gripper
     gripper.close(power=50)
-    time.sleep(1)
-    gripper.pause()
-
-    robot.close()
