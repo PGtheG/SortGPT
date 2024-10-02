@@ -1,46 +1,52 @@
 import cv2
-from robomaster import robot, camera
+import threading
+from robomaster import robot
 
-import modules.camera as mod_camera
-import modules.gripper as mod_gripper
-import modules.sound as mod_sound
-import modules.chassis as mod_chassis
+from modules.camera import observate_camera, process_frame
+from modules.chassis import handle_moving
 
 
+# Initialize the RoboMaster EP Core
 def init_robot():
-    init_robot = robot.Robot()
-    init_robot.initialize(conn_type="ap")
+    ep_robot = robot.Robot()
+    ep_robot.initialize(conn_type="ap")  # Connect to the robot
+    return ep_robot
 
-    return init_robot
+# Function to start the video stream
+def start_video_stream(robot_camera):
+    robot_camera.start_video_stream(display=False)  # Start without displaying
 
-def init_cam(init_cam_robot):
-    robot_camera = init_cam_robot.camera
-    robot_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
-
-    return robot_camera
-
+# Main function to run the program
 if __name__ == '__main__':
-    # INIT ROBOT
+    # Initialize the robot
     ep_robot = init_robot()
-    ep_camera = init_cam(ep_robot)
+    robot_camera = ep_robot.camera
 
-    # TEST FUNCTIONS
-    # mod_camera.camera_test(robot)
-    # mod_gripper.gripper_test(robot)
-    # mod_sound.test_sound(robot)
+    # Start the video stream in a separate thread
+    video_thread = threading.Thread(target=start_video_stream, args=(robot_camera,))
+    video_thread.daemon = True  # Ensure thread exits when main program exits
+    video_thread.start()
 
+    # Main loop to capture and display the camera feed
+    while True:
+        frame = robot_camera.read_cv2_image(timeout=3, strategy="pipeline")
+        if frame is not None:
+            ball, processed_frame = observate_camera(frame)
 
-    # MAIN FUNCTION
-    # while True:
-    #     ball = observate_camera(ep_camera)
-    #
-    #     if ball is not None:
-    #         mod_chassis.handle_moving(ep_robot, ball)
-    #
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
-    #
-    # ep_camera.stop_video_stream()
-    # cv2.destroyAllWindows()
-    # print('done')
+            if ball is not None:
+                new_frame = handle_moving(ep_robot, ball, processed_frame)
 
+                cv2.imshow("RoboMaster Camera Feed", new_frame)
+
+            else:
+                cv2.imshow("RoboMaster Camera Feed", processed_frame)
+
+        # Break the loop on 'q' key press
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Cleanup
+    robot_camera.stop_video_stream()
+    ep_robot.close()  # Close the robot connection
+    cv2.destroyAllWindows()  # Close OpenCV windows
+    print('Finished')

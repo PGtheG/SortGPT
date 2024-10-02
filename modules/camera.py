@@ -9,21 +9,15 @@ BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
 BALL_MAX_RADIUS = 60
 COLOR_BOUNDS = {
-    "red": (np.array([102, 0, 0]), np.array([255, 50, 50])),
-    "yellow": (np.array([102, 102, 0]), np.array([255, 255, 50])),
-    "green": (np.array([0, 102, 0]), np.array([50, 255, 50])),
-    "blue": (np.array([0, 50, 204]), np.array([153, 204, 255]))
+    'green': (np.array([0, 128, 0]), np.array([100, 255, 100])),
+    'yellow': (np.array([0, 200, 200]), np.array([100, 255, 255])),
+    'red': (np.array([0, 0, 128]), np.array([100, 100, 255])),
+    'blue': (np.array([200, 0, 0]), np.array([255, 100, 100]))
 }
-
-def camera_test(robot):
-    robot_camera = robot.camera
-
-    robot_camera.start_video_stream(display=True, resolution=camera.STREAM_720P)
-    time.sleep(20)
-
-    robot_camera.stop_video_stream()
-    robot.close()
-
+ROI_START_Y = 600
+ROI_END_Y = 700
+ROI_START_X = 500
+ROI_END_X = 800
 
 def draw_ball(frame, contour_list, red=255, green=255, blue=255):
     for contour in contour_list:
@@ -70,17 +64,14 @@ def choose_best_ball(all_contours):
 
     return best_ball
 
-def observate_camera(robot_camera):
-    frame = robot_camera.read_cv2_image(strategy="newest")
+def process_frame(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     all_contours = []
 
     for color, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
         mask = cv2.inRange(hsv, lower_bound, upper_bound)
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        # draw_ball(frame, contours, red=0, green=0, blue=0) # for debugging purposes (black = contours)
         balls = filter_circular_contours(contours)
-        # draw_ball(frame, balls, red=255, green=255, blue=255) # for debugging purposes (white = circular objects)
         all_contours.extend(balls)
 
     best_ball = choose_best_ball(all_contours)
@@ -88,6 +79,27 @@ def observate_camera(robot_camera):
     if best_ball is not None:
         draw_ball(frame, [best_ball], red=0, blue=0)
 
-    cv2.imshow("Ball Detection", frame)
+    return best_ball, frame
 
-    return best_ball
+def observate_camera(frame):
+    best_ball, processed_frame = process_frame(frame)
+
+    return best_ball, processed_frame
+
+
+def handle_color_in_gripper(frame):
+    gripper_roi = frame[ROI_START_Y:ROI_END_Y, ROI_START_X:ROI_END_X]
+
+    for color_name, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
+        mask = cv2.inRange(gripper_roi, lower_bound, upper_bound)
+        color_pixels = cv2.countNonZero(mask)
+
+        if color_pixels > 2000:
+            cv2.rectangle(frame, (ROI_START_X, ROI_START_Y), (ROI_END_X, ROI_END_Y), (0, 255, 0), 2)
+            print(f"{color_name} has {color_pixels} pixels")
+
+            return False, frame
+
+    cv2.rectangle(frame, (ROI_START_X, ROI_START_Y), (ROI_END_X, ROI_END_Y), (0, 255, 255), 2)
+
+    return True, frame
