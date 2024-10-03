@@ -5,11 +5,12 @@ from time import sleep
 import cv2
 import numpy as np
 
+from helper.position import calc_turn_for_marker
 from modules import chassis as mod_chassis
 from modules import gripper as mod_gripper
 from helper import sequence as help_sequence
 
-BALL_DETECTION_RATE = 0.4 # Range: 0 - 1
+BALL_DETECTION_RATE = 0.6 # Range: 0 - 1
 BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
 BALL_MAX_RADIUS = 60
@@ -106,8 +107,6 @@ def search_for_ball(frame):
 def get_newest_frame(robot_camera):
     # This ugly piece of code is needed, because dji can't implement
     # a function which gives you the newest frame back -.-
-
-    time.sleep(1)
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
@@ -121,7 +120,6 @@ def get_newest_frame(robot_camera):
 def check_if_ball_is_grabbed(robot_camera):
     frame = get_newest_frame(robot_camera)
 
-    cv2.imshow("check_if_ball_is_grabbed", frame)
     ball_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
 
     is_ball_in_gripper, color_name = check_color_in_roi(frame, ball_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
@@ -135,12 +133,12 @@ def search_ball(robot, frame, robot_camera):
     if ball is None:
         # Advanced logic which searches for ball needed
         print('No ball found, start searching')
-        mod_chassis.turn(robot, 20, 30)
+        mod_chassis.turn(robot, 20, 20)
 
         return processed_frame, False, None
 
     else:
-        print('Ball found, start catching')
+        print('Ball found, start driving towards')
         frame_with_ball, has_ball_in_gripper_range, color_of_ball = mod_chassis.handle_moving(robot, ball, robot_camera)
         is_ball_in_gripper = False
 
@@ -150,7 +148,7 @@ def search_ball(robot, frame, robot_camera):
 
             if is_ball_in_gripper is False:
                 mod_gripper.gripper_open(robot)
-                mod_chassis.move_backwards(robot, 0.1, 0.5)
+                mod_chassis.move_backwards(robot, 0.2, 1.0)
 
         return frame_with_ball, is_ball_in_gripper, color_of_ball
 
@@ -186,7 +184,7 @@ def handle_color_in_gripper(robot_camera):
     return has_color, frame, None
 
 
-def handle_search_box(robot, box_nr):
+def handle_search_box(robot, box_nr, count):
     global DETECTED_MARKER_INFO
     global BOX_NR
 
@@ -198,12 +196,13 @@ def handle_search_box(robot, box_nr):
             print('Marker detected')
             marker_info = DETECTED_MARKER_INFO
             DETECTED_MARKER_INFO = None
-            return marker_info
+            return marker_info, count
         else:
             print('No Marker detected, will turn slow')
             mod_chassis.turn(robot, 20, 25)
+            count += 1
 
-    return None
+    return None, count
 
 
 def search_box_with_vision(robot):
@@ -221,7 +220,8 @@ def marker_detected(marker_info):
                 break  # Exit once we find the matching marker
 
 
-def draw_marker(frame, marker_info):
+def draw_marker(robot_camera, marker_info):
+    frame = get_newest_frame(robot_camera)
     frame_height, frame_width = frame.shape[:2]
     x, y, w, h, number = marker_info
 
@@ -244,18 +244,16 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
     upper_middle = 800
     lower_distance = 330
     upper_distance = 380
+    adjust_degree = 5
     has_position = True
     print("Adjust position:")
 
-    if rect_x < lower_middle:
-        mod_chassis.move_left(robot, 0.1, 0.5)
-        has_position = False
-        print(f"move left, distance: {rect_x - lower_middle}")
+    degree = calc_turn_for_marker(rect_x)
 
-    elif rect_x > upper_middle:
-        mod_chassis.move_right(robot, 0.1, 0.5)
+    if degree > adjust_degree or degree < (adjust_degree * -1):
+        mod_chassis.turn(robot, degree, 50)
         has_position = False
-        print(f"move right, distance: {rect_x - upper_middle}")
+        print(f"Turn, degree: {degree}")
 
     elif rect_y < lower_distance:
         mod_chassis.move_forward(robot, 0.1, 0.5)
@@ -267,6 +265,16 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
         has_position = False
         print("move backwards")
 
+    elif rect_x < lower_middle:
+        mod_chassis.move_left(robot, 0.1, 0.5)
+        has_position = False
+        print(f"move left, distance: {rect_x - lower_middle}")
+
+    elif rect_x > upper_middle:
+        mod_chassis.move_right(robot, 0.1, 0.5)
+        has_position = False
+        print(f"move right, distance: {rect_x - upper_middle}")
+
     print(f"Has position: {has_position}")
 
     cv2.rectangle(frame, (lower_middle, lower_distance), (upper_middle, upper_distance), (0, 0, 0), 2)
@@ -274,8 +282,8 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
     return frame, has_position
 
 
-def handle_marker(robot, frame, marker_info):
-    processed_frame, rect_x, rect_y, rect_width, rect_height = draw_marker(frame, marker_info)
+def handle_marker(robot, robot_camera, marker_info):
+    processed_frame, rect_x, rect_y, rect_width, rect_height = draw_marker(robot_camera, marker_info)
     frame_to_draw, has_position = adjust_position(robot, processed_frame, rect_x, rect_y, rect_width, rect_height)
     still_working = True
 

@@ -37,7 +37,7 @@ def turn(robot, degree, speed=100):
 
 def drive_to_ball(robot, robot_camera):
     attempt = 0
-    max_attempts = 5
+    max_attempts = 3
     has_ball_in_gripper_range = False
     processed_frame = None
     color_of_ball = None
@@ -49,8 +49,8 @@ def drive_to_ball(robot, robot_camera):
             print("Ball is in gripper range.")
             break
 
-        move_forward(robot, 0.1, 0.5)
+        move_forward(robot, 0.2, 0.5)
         attempt += 1
-        print(f"Attempt {attempt} - Moving forward...")
+        print(f"Attempt {attempt}/{max_attempts}")
 
     return processed_frame, has_ball_in_gripper_range, color_of_ball

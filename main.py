@@ -6,12 +6,14 @@ from robomaster import robot, camera
 from helper.box import get_box_by_color
 from modules import camera as mod_camera
 from modules import arm as mod_arm
+from modules import chassis as mod_chassis
 from modules import gripper as mod_gripper
 
 HAS_BALL_IN_GRIPPER = False
 COLOR_OF_BALL = None
 LATEST_FRAME = None
 FRAME_LOCK = threading.Lock()
+SPIN_COUNTER = 0
 
 
 def init_robot():
@@ -33,10 +35,20 @@ def handle_gpt(robot, robot_camera):
     if frame_to_draw is not None:
         cv2.imshow("RoboMaster Camera Feed", frame_to_draw)
 
+def change_position(robot):
+    global SPIN_COUNTER
+
+    if SPIN_COUNTER == 36:
+        mod_chassis.move_left(robot, 0.5, 0.5)
+    elif SPIN_COUNTER == 72:
+        mod_chassis.move_right(robot, 0.5, 0.5)
+        SPIN_COUNTER = 0
+
 
 def handle_search(robot, robot_camera):
     global HAS_BALL_IN_GRIPPER
     global COLOR_OF_BALL
+    global SPIN_COUNTER
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
 
     # Mode 1: Search and grip ball
@@ -50,13 +62,16 @@ def handle_search(robot, robot_camera):
     else:
         print('Box mode')
         box_nr = get_box_by_color(COLOR_OF_BALL)
-        marker_info = mod_camera.handle_search_box(robot, box_nr)
+        marker_info, SPIN_COUNTER = mod_camera.handle_search_box(robot, box_nr, SPIN_COUNTER)
 
         if marker_info:
-            frame_to_draw, still_working = mod_camera.handle_marker(robot, frame, marker_info)
+            SPIN_COUNTER = 0
+            frame_to_draw, still_working = mod_camera.handle_marker(robot, robot_camera, marker_info)
             HAS_BALL_IN_GRIPPER = still_working
 
             return frame_to_draw
+        else:
+            change_position(robot)
 
         return frame
 
