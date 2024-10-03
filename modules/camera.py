@@ -103,9 +103,24 @@ def search_for_ball(frame):
 
     return best_ball, processed_frame
 
+def get_newest_frame(robot_camera):
+    # This ugly piece of code is needed, because dji can't implement
+    # a function which gives you the newest frame back -.-
+
+    time.sleep(1)
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    time.sleep(1)
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+
+    return frame
+
 
 def check_if_ball_is_grabbed(robot_camera):
-    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    frame = get_newest_frame(robot_camera)
+
     cv2.imshow("check_if_ball_is_grabbed", frame)
     ball_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
 
@@ -131,7 +146,6 @@ def search_ball(robot, frame, robot_camera):
 
         if has_ball_in_gripper_range:
             help_sequence.grab_ball(robot)
-            time.sleep(20)
             is_ball_in_gripper, color_of_ball = check_if_ball_is_grabbed(robot_camera)
 
             if is_ball_in_gripper is False:
