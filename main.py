@@ -54,7 +54,7 @@ def handle_search(robot, robot_camera):
     # Mode 1: Search and grip ball
     if HAS_BALL_IN_GRIPPER is False:
         print('Ball mode')
-        frame_to_draw, HAS_BALL_IN_GRIPPER, COLOR_OF_BALL = mod_camera.search_ball(robot, frame, robot_camera)
+        frame_to_draw, HAS_BALL_IN_GRIPPER, COLOR_OF_BALL = mod_camera.search_ball(robot, robot_camera)
 
         return frame_to_draw
 
@@ -85,6 +85,7 @@ if __name__ == '__main__':
     video_thread.daemon = True
     video_thread.start()
     frame_count = 0
+    win = False
 
     # MAIN LOOP
     while True:
@@ -96,7 +97,7 @@ if __name__ == '__main__':
             print(f"Frame count to high ({frame_count}), need to reset")
             frame_count = 0
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if win is True:
             break
 
     # CLEANUP

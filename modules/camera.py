@@ -10,14 +10,14 @@ from modules import chassis as mod_chassis
 from modules import gripper as mod_gripper
 from helper import sequence as help_sequence
 
-BALL_DETECTION_RATE = 0.6 # Range: 0 - 1
+BALL_DETECTION_RATE = 0.5 # Range: 0 - 1
 BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
-BALL_MAX_RADIUS = 60
+BALL_MAX_RADIUS = 80
 COLOR_BOUNDS = {
     'green': (np.array([40, 100, 100]), np.array([80, 255, 255])),   # Adjust as needed
     'yellow': (np.array([20, 100, 100]), np.array([30, 255, 255])),  # Adjust as needed
-    'red': (np.array([0, 100, 100]), np.array([10, 255, 255])),     # Adjust as needed
+    # 'red': (np.array([0, 100, 100]), np.array([10, 255, 255])),     # Adjust as needed
     'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))  # Adjust as needed
 }
 ROI_START_Y = 450
@@ -80,7 +80,8 @@ def choose_best_ball(all_balls):
 
     return best_ball
 
-def process_frame(frame):
+def process_frame(robot_camera):
+    frame = get_newest_frame(robot_camera, False)
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     all_balls = []
 
@@ -99,26 +100,25 @@ def process_frame(frame):
 
     return best_ball, frame
 
-def search_for_ball(frame):
-    best_ball, processed_frame = process_frame(frame)
+def search_for_ball(robot_camera):
+    best_ball, processed_frame = process_frame(robot_camera)
 
     return best_ball, processed_frame
 
-def get_newest_frame(robot_camera):
+def get_newest_frame(robot_camera, newest_needed=False):
     # This ugly piece of code is needed, because dji can't implement
     # a function which gives you the newest frame back -.-
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    if newest_needed:
+        sleep(1)
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
-    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
-    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
-    time.sleep(1)
     frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
 
     return frame
 
 
 def check_if_ball_is_grabbed(robot_camera):
-    frame = get_newest_frame(robot_camera)
+    frame = get_newest_frame(robot_camera, True)
 
     ball_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
 
@@ -127,13 +127,13 @@ def check_if_ball_is_grabbed(robot_camera):
     return is_ball_in_gripper, color_name
 
 
-def search_ball(robot, frame, robot_camera):
-    ball, processed_frame = search_for_ball(frame)
+def search_ball(robot, robot_camera):
+    ball, processed_frame = search_for_ball(robot_camera)
 
     if ball is None:
         # Advanced logic which searches for ball needed
         print('No ball found, start searching')
-        mod_chassis.turn(robot, 20, 20)
+        mod_chassis.turn(robot, 30, 40)
 
         return processed_frame, False, None
 
@@ -221,7 +221,7 @@ def marker_detected(marker_info):
 
 
 def draw_marker(robot_camera, marker_info):
-    frame = get_newest_frame(robot_camera)
+    frame = get_newest_frame(robot_camera, True)
     frame_height, frame_width = frame.shape[:2]
     x, y, w, h, number = marker_info
 
@@ -255,8 +255,8 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
         has_position = False
         print(f"Turn, degree: {degree}")
 
-    elif rect_y < lower_distance:
-        mod_chassis.move_forward(robot, 0.1, 0.5)
+    if rect_y < lower_distance:
+        mod_chassis.move_forward(robot, 0.2, 0.5)
         has_position = False
         print(f"move forward, distance: {rect_y - lower_distance}")
 
