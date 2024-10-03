@@ -16,20 +16,15 @@ FRAME_LOCK = threading.Lock()
 
 def init_robot():
     ep_robot = robot.Robot()
-    ep_robot.initialize(conn_type="ap")  # Connect to the robot
+    ep_robot.initialize(conn_type="ap")
 
     mod_arm.move_around(ep_robot)
     mod_gripper.gripper_open(ep_robot)
 
     return ep_robot
 
-
 def start_video_stream(robot_camera):
-    robot_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)  # Start without displaying
-
-
-def get_frame(robot_camera):
-    return robot_camera.read_cv2_image(timeout=1, strategy="pipeline")
+    robot_camera.start_video_stream(display=False, resolution=camera.STREAM_720P)
 
 
 def handle_gpt(robot, robot_camera):
@@ -42,7 +37,7 @@ def handle_gpt(robot, robot_camera):
 def handle_search(robot, robot_camera):
     global HAS_BALL_IN_GRIPPER
     global COLOR_OF_BALL
-    frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
 
     # Mode 1: Search and grip ball
     if HAS_BALL_IN_GRIPPER is False:
@@ -74,10 +69,17 @@ if __name__ == '__main__':
     video_thread = threading.Thread(target=start_video_stream, args=(robot_camera,))
     video_thread.daemon = True
     video_thread.start()
+    frame_count = 0
 
     # MAIN LOOP
     while True:
-        handle_gpt(ep_robot, robot_camera)
+        frame_count += 1
+        if frame_count % 3 == 0:
+            handle_gpt(ep_robot, robot_camera)
+
+        if frame_count > 100000:
+            print(f"Frame count to high ({frame_count}), need to reset")
+            frame_count = 0
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break

@@ -1,25 +1,34 @@
 import threading
+import time
+from time import sleep
 
 import cv2
 import numpy as np
 
 from modules import chassis as mod_chassis
+from modules import gripper as mod_gripper
 from helper import sequence as help_sequence
 
-BALL_DETECTION_RATE = 0.2 # Range: 0 - 1
+BALL_DETECTION_RATE = 0.4 # Range: 0 - 1
 BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
 BALL_MAX_RADIUS = 60
 COLOR_BOUNDS = {
-    'green': (np.array([0, 128, 0]), np.array([100, 255, 100])),
-    'yellow': (np.array([0, 200, 200]), np.array([100, 255, 255])),
-    'red': (np.array([0, 0, 128]), np.array([100, 100, 255])),
-    'blue': (np.array([200, 0, 0]), np.array([255, 100, 100]))
+    'green': (np.array([40, 100, 100]), np.array([80, 255, 255])),   # Adjust as needed
+    'yellow': (np.array([20, 100, 100]), np.array([30, 255, 255])),  # Adjust as needed
+    'red': (np.array([0, 100, 100]), np.array([10, 255, 255])),     # Adjust as needed
+    'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))  # Adjust as needed
 }
 ROI_START_Y = 450
 ROI_END_Y = 550
 ROI_START_X = 550
 ROI_END_X = 750
+
+ROI_GRIPPER_BALL_START_Y = 600
+ROI_GRIPPER_BALL_END_Y = 700
+ROI_GRIPPER_BALL_START_X = 550
+ROI_GRIPPER_BALL_END_X = 750
+
 THRESHOLD = 1500
 DETECTED_MARKER_INFO = None
 DETECTED_MARKER_LOCK = threading.Lock()
@@ -57,22 +66,22 @@ def filter_circular_contours(contour_list):
     return filtered_contours
 
 
-def choose_best_ball(all_contours):
+def choose_best_ball(all_balls):
     best_ball = None
     biggest_ball_area = 0
 
-    for contour in all_contours:
-        current_ball_area = cv2.contourArea(contour)
+    for ball in all_balls:
+        current_ball_area = cv2.contourArea(ball)
 
         if current_ball_area > biggest_ball_area:
             biggest_ball_area = current_ball_area
-            best_ball = contour
+            best_ball = ball
 
     return best_ball
 
 def process_frame(frame):
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    all_contours = []
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    all_balls = []
 
     for color, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
         mask = cv2.inRange(hsv, lower_bound, upper_bound)
@@ -80,9 +89,9 @@ def process_frame(frame):
         draw_circles(frame, contours, red=0, green=0, blue=0) # for debugging purposes (black = contours)
         balls = filter_circular_contours(contours)
         draw_circles(frame, balls, red=255, green=255, blue=255) # for debugging purposes (white = circular objects)
-        all_contours.extend(balls)
+        all_balls.extend(balls)
 
-    best_ball = choose_best_ball(all_contours)
+    best_ball = choose_best_ball(all_balls)
 
     if best_ball is not None:
         draw_circles(frame, [best_ball], red=0, blue=0)
@@ -93,6 +102,17 @@ def search_for_ball(frame):
     best_ball, processed_frame = process_frame(frame)
 
     return best_ball, processed_frame
+
+
+def check_if_ball_is_grabbed(robot_camera):
+    frame = robot_camera.read_cv2_image(timeout=3, strategy="newest")
+    cv2.imshow("check_if_ball_is_grabbed", frame)
+    ball_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
+
+    is_ball_in_gripper, color_name = check_color_in_roi(frame, ball_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
+
+    return is_ball_in_gripper, color_name
+
 
 def search_ball(robot, frame, robot_camera):
     ball, processed_frame = search_for_ball(frame)
@@ -107,29 +127,49 @@ def search_ball(robot, frame, robot_camera):
     else:
         print('Ball found, start catching')
         frame_with_ball, has_ball_in_gripper_range, color_of_ball = mod_chassis.handle_moving(robot, ball, robot_camera)
+        is_ball_in_gripper = False
+
         if has_ball_in_gripper_range:
             help_sequence.grab_ball(robot)
+            time.sleep(20)
+            is_ball_in_gripper, color_of_ball = check_if_ball_is_grabbed(robot_camera)
 
-        return frame_with_ball, has_ball_in_gripper_range, color_of_ball
+            if is_ball_in_gripper is False:
+                mod_gripper.gripper_open(robot)
+                mod_chassis.move_backwards(robot, 0.1, 0.5)
+
+        return frame_with_ball, is_ball_in_gripper, color_of_ball
+
+
+def check_color_in_roi(frame, roi, start_y, end_y, start_x, end_x):
+    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+
+    for color_name, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
+        mask = cv2.inRange(hsv_roi, lower_bound, upper_bound)
+        color_pixels = cv2.countNonZero(mask)
+
+        if color_pixels > THRESHOLD:
+            cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (0, 255, 0), 2)
+            print(f"{color_name} has {color_pixels} pixels")
+
+            return True, color_name
+
+        else:
+            cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (0, 0, 0), 2)
+            print(f"{color_name} has {color_pixels} pixels")
+
+    return False, None
+
 
 
 def handle_color_in_gripper(robot_camera):
     frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
     gripper_roi = frame[ROI_START_Y:ROI_END_Y, ROI_START_X:ROI_END_X]
-
-    for color_name, (lower_bound, upper_bound) in COLOR_BOUNDS.items():
-        mask = cv2.inRange(gripper_roi, lower_bound, upper_bound)
-        color_pixels = cv2.countNonZero(mask)
-
-        if color_pixels > THRESHOLD:
-            cv2.rectangle(frame, (ROI_START_X, ROI_START_Y), (ROI_END_X, ROI_END_Y), (0, 255, 0), 2)
-            print(f"{color_name} has {color_pixels} pixels")
-
-            return True, frame, color_name
+    has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_START_Y, ROI_END_Y, ROI_START_X, ROI_END_X)
 
     cv2.rectangle(frame, (ROI_START_X, ROI_START_Y), (ROI_END_X, ROI_END_Y), (0, 255, 255), 2)
 
-    return False, frame, None
+    return has_color, frame, None
 
 
 def handle_search_box(robot, box_nr):
@@ -183,26 +223,17 @@ def draw_marker(frame, marker_info):
 
     cv2.rectangle(frame, (top_left_x, top_left_y), (bottom_right_x, bottom_right_y), (0, 0, 0), 2)
 
-    return frame, rect_x, rect_y
+    return frame, rect_x, rect_y, rect_width, rect_height
 
-def adjust_position(robot, rect_x, rect_y):
-    lower_middle = 550
-    upper_middle = 770
-    lower_distance = 350
+def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
+    lower_middle = 530
+    upper_middle = 800
+    lower_distance = 330
     upper_distance = 380
     has_position = True
+    print("Adjust position:")
 
-    if rect_y < lower_distance:
-        mod_chassis.move_forward(robot, 0.1, 0.5)
-        has_position = False
-        print(f"move forward, distance: {rect_y - lower_distance}")
-
-    elif rect_y > upper_distance:
-        mod_chassis.move_backwards(robot, 0.1, 0.5)
-        has_position = False
-        print("move backwards")
-
-    elif rect_x < lower_middle:
+    if rect_x < lower_middle:
         mod_chassis.move_left(robot, 0.1, 0.5)
         has_position = False
         print(f"move left, distance: {rect_x - lower_middle}")
@@ -212,17 +243,30 @@ def adjust_position(robot, rect_x, rect_y):
         has_position = False
         print(f"move right, distance: {rect_x - upper_middle}")
 
+    elif rect_y < lower_distance:
+        mod_chassis.move_forward(robot, 0.1, 0.5)
+        has_position = False
+        print(f"move forward, distance: {rect_y - lower_distance}")
+
+    elif rect_y > upper_distance:
+        mod_chassis.move_backwards(robot, 0.1, 0.5)
+        has_position = False
+        print("move backwards")
+
     print(f"Has position: {has_position}")
 
-    return has_position
+    cv2.rectangle(frame, (lower_middle, lower_distance), (upper_middle, upper_distance), (0, 0, 0), 2)
+
+    return frame, has_position
 
 
 def handle_marker(robot, frame, marker_info):
-    frame_to_draw, rect_x, rect_y = draw_marker(frame, marker_info)
-    has_position = adjust_position(robot, rect_x, rect_y)
+    processed_frame, rect_x, rect_y, rect_width, rect_height = draw_marker(frame, marker_info)
+    frame_to_draw, has_position = adjust_position(robot, processed_frame, rect_x, rect_y, rect_width, rect_height)
     still_working = True
 
     if has_position:
+        print("Release ball")
         help_sequence.release_ball(robot)
         still_working = False
 
