@@ -1,12 +1,5 @@
 from robomaster import robotic_arm
 
-""" 机械臂绝对位置移动 absolute position of robotic arm
-
-        :param x: float, x-axis, forwards (positive), mm
-        :param y: float, y-axis, upwards (positive), mm
-        """
-
-
 def move_around(robot):
     arm = robot.robotic_arm
     arm.moveto(x=180, y=0).wait_for_completed()

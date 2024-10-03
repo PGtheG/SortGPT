@@ -22,6 +22,11 @@ def grab_ball(robot):
     mod_arm.move_around(robot)
     mod_chassis.move_backwards(robot, 0.3, 1.0)
 
+def pick_ball(robot):
+    mod_arm.low_to_grab(robot)
+    mod_gripper.gripper_close(robot)
+    mod_arm.move_around(robot)
+
 ###########################
 # SEARCH WHILE ROTATING
 ###########################

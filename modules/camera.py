@@ -1,11 +1,11 @@
 import threading
-import time
 from time import sleep
 
 import cv2
 import numpy as np
 
 from helper.position import calc_turn_for_marker
+from helper.sequence import pick_ball, grab_ball
 from modules import chassis as mod_chassis
 from modules import gripper as mod_gripper
 from helper import sequence as help_sequence
@@ -15,10 +15,10 @@ BALL_MIN_AREA = 300
 BALL_MIN_RADIUS = 5
 BALL_MAX_RADIUS = 80
 COLOR_BOUNDS = {
-    'green': (np.array([40, 100, 100]), np.array([80, 255, 255])),   # Adjust as needed
-    'yellow': (np.array([20, 100, 100]), np.array([30, 255, 255])),  # Adjust as needed
+    'green': (np.array([35, 70, 120]), np.array([95, 255, 255])),
+    'yellow': (np.array([20, 100, 100]), np.array([30, 255, 255])),
     # 'red': (np.array([0, 100, 100]), np.array([10, 255, 255])),     # Adjust as needed
-    'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))  # Adjust as needed
+    'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))  # Existing blue range
 }
 ROI_START_Y = 450
 ROI_END_Y = 550
@@ -34,6 +34,8 @@ THRESHOLD = 1500
 DETECTED_MARKER_INFO = None
 DETECTED_MARKER_LOCK = threading.Lock()
 BOX_NR = 0
+SEARCH_ANGLE = 0
+SEARCH_PHASE = 0
 
 def draw_circles(frame, contour_list, red=255, green=255, blue=255):
     for contour in contour_list:
@@ -81,7 +83,7 @@ def choose_best_ball(all_balls):
     return best_ball
 
 def process_frame(robot_camera):
-    frame = get_newest_frame(robot_camera, False)
+    frame = get_newest_frame(robot_camera, True)
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     all_balls = []
 
@@ -126,14 +128,80 @@ def check_if_ball_is_grabbed(robot_camera):
 
     return is_ball_in_gripper, color_name
 
+def is_frame_mostly_white(robot_camera, threshold):
+    frame = get_newest_frame(robot_camera, True)
+    hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    lower_white = np.array([0, 0, 150], dtype=np.uint8)  # Lower brightness to allow even darker whites
+    upper_white = np.array([180, 80, 255], dtype=np.uint8)
+
+    white_mask = cv2.inRange(hsv_frame, lower_white, upper_white)
+    white_pixel_ratio = np.sum(white_mask > 0) / white_mask.size
+
+    print(f"Pixel ratio: {white_pixel_ratio}, threshold: {threshold}")
+
+    return white_pixel_ratio > threshold, frame
+
+
+def search_ball_in_room(robot, robot_camera):
+    global SEARCH_ANGLE, SEARCH_PHASE
+
+    print('Searching for the ball...')
+
+    # Phase 0: Rotating
+    if SEARCH_PHASE == 0:
+        # Rotate the robot in increments (e.g., 30 degrees at a time)
+        mod_chassis.turn(robot, 30, 40)
+        SEARCH_ANGLE += 30
+
+        # Check if a full rotation (360 degrees) has been completed
+        if SEARCH_ANGLE >= 390:
+            SEARCH_ANGLE = 0  # Reset rotation progress
+            SEARCH_PHASE = 1  # Switch to movement phase
+
+    # Phase 1: Moving
+    elif SEARCH_PHASE == 1:
+        while True:
+            is_white, processed_frame = is_frame_mostly_white(robot_camera, 0.35)
+
+            if is_white:
+                print("Detected white wall, turning to find a clearer view")
+                mod_chassis.turn(robot, 30, 40)
+            else:
+                print("Clear view found, proceeding with ball search")
+                break
+        mod_chassis.move_forward(robot, 0.5, 1.0)
+        SEARCH_PHASE = 0
+
+    return
+
 
 def search_ball(robot, robot_camera):
+    # 1. Check first if ball is already in perfect position
+    frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
+    gripper_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
+    has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
+
+    if has_color is True:
+        pick_ball(robot)
+        has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
+
+        return frame, has_color, color_name
+
+    # 2 Check second if ball is near the gripper
+    gripper_roi = frame[ROI_START_Y:ROI_END_Y, ROI_START_X:ROI_END_X]
+    has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_START_Y, ROI_END_Y, ROI_START_X, ROI_END_X)
+    if has_color is True:
+        grab_ball(robot)
+        has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
+
+        return frame, has_color, color_name
+
+    # 3. If not, search for ball in frame
     ball, processed_frame = search_for_ball(robot_camera)
 
     if ball is None:
         # Advanced logic which searches for ball needed
-        print('No ball found, start searching')
-        mod_chassis.turn(robot, 30, 40)
+        search_ball_in_room(robot, robot_camera)
 
         return processed_frame, False, None
 
@@ -239,7 +307,7 @@ def draw_marker(robot_camera, marker_info):
 
     return frame, rect_x, rect_y, rect_width, rect_height
 
-def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
+def adjust_position(robot, frame, rect_x, rect_y):
     lower_middle = 530
     upper_middle = 800
     lower_distance = 330
@@ -256,24 +324,26 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
         print(f"Turn, degree: {degree}")
 
     if rect_y < lower_distance:
-        mod_chassis.move_forward(robot, 0.2, 0.5)
+        current_distance = lower_distance - rect_y
+        print(f"move forward, distance: {current_distance}")
+
+        if current_distance > 160:
+            mod_chassis.move_forward(robot, 1.2, 1.0)
+        elif current_distance > 150:
+            mod_chassis.move_forward(robot, 0.8, 1.0)
+        elif current_distance > 120:
+            mod_chassis.move_forward(robot, 0.4, 1.0)
+        elif current_distance > 110:
+            mod_chassis.move_forward(robot, 0.3, 1.0)
+        else:
+            mod_chassis.move_forward(robot, 0.2, 0.5)
+
         has_position = False
-        print(f"move forward, distance: {rect_y - lower_distance}")
 
     elif rect_y > upper_distance:
         mod_chassis.move_backwards(robot, 0.1, 0.5)
         has_position = False
         print("move backwards")
-
-    elif rect_x < lower_middle:
-        mod_chassis.move_left(robot, 0.1, 0.5)
-        has_position = False
-        print(f"move left, distance: {rect_x - lower_middle}")
-
-    elif rect_x > upper_middle:
-        mod_chassis.move_right(robot, 0.1, 0.5)
-        has_position = False
-        print(f"move right, distance: {rect_x - upper_middle}")
 
     print(f"Has position: {has_position}")
 
@@ -284,7 +354,7 @@ def adjust_position(robot, frame, rect_x, rect_y, rect_width, rect_height):
 
 def handle_marker(robot, robot_camera, marker_info):
     processed_frame, rect_x, rect_y, rect_width, rect_height = draw_marker(robot_camera, marker_info)
-    frame_to_draw, has_position = adjust_position(robot, processed_frame, rect_x, rect_y, rect_width, rect_height)
+    frame_to_draw, has_position = adjust_position(robot, processed_frame, rect_x, rect_y)
     still_working = True
 
     if has_position:
