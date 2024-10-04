@@ -187,16 +187,7 @@ def search_ball(robot, robot_camera):
 
         return frame, has_color, color_name
 
-    # 2 Check second if ball is near the gripper
-    gripper_roi = frame[ROI_START_Y:ROI_END_Y, ROI_START_X:ROI_END_X]
-    has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_START_Y, ROI_END_Y, ROI_START_X, ROI_END_X)
-    if has_color is True:
-        grab_ball(robot)
-        has_color, color_name = check_color_in_roi(frame, gripper_roi, ROI_GRIPPER_BALL_START_Y, ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X, ROI_GRIPPER_BALL_END_X)
-
-        return frame, has_color, color_name
-
-    # 3. If not, search for ball in frame
+    # 2. If not, search for ball in frame
     ball, processed_frame = search_for_ball(robot_camera)
 
     if ball is None:
