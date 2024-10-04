@@ -17,8 +17,8 @@ BALL_MAX_RADIUS = 80
 COLOR_BOUNDS = {
     'green': (np.array([35, 70, 120]), np.array([95, 255, 255])),
     'yellow': (np.array([20, 100, 100]), np.array([30, 255, 255])),
-    # 'red': (np.array([0, 100, 100]), np.array([10, 255, 255])),     # Adjust as needed
-    'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))  # Existing blue range
+    'red': (np.array([0, 100, 58]), np.array([10, 255, 255])),
+    'blue': (np.array([100, 100, 100]), np.array([140, 255, 255]))
 }
 ROI_START_Y = 450
 ROI_END_Y = 550
