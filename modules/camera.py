@@ -10,9 +10,9 @@ from modules import chassis as mod_chassis
 from modules import gripper as mod_gripper
 from helper import sequence as help_sequence
 
-BALL_DETECTION_RATE = 0.5 # Range: 0 - 1
-BALL_MIN_AREA = 300
-BALL_MIN_RADIUS = 5
+BALL_DETECTION_RATE = 0.2 # Range: 0 - 1
+BALL_MIN_AREA = 500
+BALL_MIN_RADIUS = 15
 BALL_MAX_RADIUS = 80
 COLOR_BOUNDS = {
     'green': (np.array([35, 70, 120]), np.array([95, 255, 255])),
@@ -35,7 +35,8 @@ DETECTED_MARKER_INFO = None
 DETECTED_MARKER_LOCK = threading.Lock()
 BOX_NR = 0
 SEARCH_ANGLE = 0
-SEARCH_PHASE = 0
+SEARCH_PHASE = 0,
+GRAB_TRY_COUNT = 0
 
 def draw_circles(frame, contour_list, red=255, green=255, blue=255):
     for contour in contour_list:
@@ -149,6 +150,7 @@ def search_ball_in_room(robot, robot_camera):
 
     # Phase 0: Rotating
     if SEARCH_PHASE == 0:
+        print("Search phase")
         # Rotate the robot in increments (e.g., 30 degrees at a time)
         mod_chassis.turn(robot, 30, 40)
         SEARCH_ANGLE += 30
@@ -159,7 +161,8 @@ def search_ball_in_room(robot, robot_camera):
             SEARCH_PHASE = 1  # Switch to movement phase
 
     # Phase 1: Moving
-    elif SEARCH_PHASE == 1:
+    else:
+        print("Moving phase")
         while True:
             is_white, processed_frame = is_frame_mostly_white(robot_camera, 0.35)
 
@@ -176,6 +179,7 @@ def search_ball_in_room(robot, robot_camera):
 
 
 def search_ball(robot, robot_camera):
+    global GRAB_TRY_COUNT
     # 1. Check first if ball is already in perfect position
     frame = robot_camera.read_cv2_image(timeout=1, strategy="newest")
     gripper_roi = frame[ROI_GRIPPER_BALL_START_Y:ROI_GRIPPER_BALL_END_Y, ROI_GRIPPER_BALL_START_X:ROI_GRIPPER_BALL_END_X]
@@ -207,7 +211,13 @@ def search_ball(robot, robot_camera):
 
             if is_ball_in_gripper is False:
                 mod_gripper.gripper_open(robot)
-                mod_chassis.move_backwards(robot, 0.2, 1.0)
+                GRAB_TRY_COUNT += 1
+            else:
+                GRAB_TRY_COUNT = 0
+
+            if GRAB_TRY_COUNT >= 3:
+                mod_chassis.turn(robot, 90, 50)
+                GRAB_TRY_COUNT = 0
 
         return frame_with_ball, is_ball_in_gripper, color_of_ball
 
@@ -332,7 +342,7 @@ def adjust_position(robot, frame, rect_x, rect_y):
         has_position = False
 
     elif rect_y > upper_distance:
-        mod_chassis.move_backwards(robot, 0.1, 0.5)
+        mod_chassis.move_backwards(robot, 0.15, 0.5)
         has_position = False
         print("move backwards")
 
